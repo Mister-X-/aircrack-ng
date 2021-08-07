@@ -1588,6 +1588,7 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 	uint8_t * tag = NULL;
 	size_t len = 0;
 	size_t i = 0;
+	size_t buffer_len;
 	int c = 0;
 	uint8_t * buffer;
 	uint8_t essid[256];
@@ -2280,9 +2281,17 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 					}
 
 					// store the tagged parameters and insert the fixed ones
-					buffer = (uint8_t *) malloc(length - z);
+					buffer_len = length -z;
+					buffer = (uint8_t *) malloc(buffer_len);
 					ALLEGE(buffer != NULL);
-					memcpy(buffer, packet + z, length - z);
+					memcpy(buffer, packet + z, buffer_len);
+
+					// Remove SSID from the probe request as we will add another
+					// Leaving it makes the probe have 2 SSID IE, therefore
+					// making the response invalid.
+					// TODO: Check it doesn't have side effects to other attacks
+					remove_tag(buffer, IEEE80211_ELEMID_SSID, &buffer_len);
+					length -= length - z - buffer_len;
 
 					memcpy(packet + z,
 						   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
@@ -2305,29 +2314,29 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 					}
 
 					// insert essid
+					#define PROBE_FIXED_PARAM_LEN 12
 					len = (size_t) getESSID(fessid);
 					if (!len)
 					{
 						strncpy(fessid, "default", sizeof(fessid) - 1);
 						len = strlen(fessid);
 					}
-					packet[z + 12] = 0x00;
-					packet[z + 13] = (uint8_t) len;
-					memcpy(packet + z + 14, fessid, len);
+					packet[z + PROBE_FIXED_PARAM_LEN] = IEEE80211_ELEMID_SSID;
+					packet[z + PROBE_FIXED_PARAM_LEN + 1] = (uint8_t) len;
+					memcpy(packet + z + PROBE_FIXED_PARAM_LEN + 2, fessid, len);
 
 					// insert tagged parameters
-					memcpy(packet + z + 14 + len,
+					memcpy(packet + z + PROBE_FIXED_PARAM_LEN + 2 + len,
 						   buffer,
-						   length
-							   - z); // now we got 2 essid tags... ignore that
+						   buffer_len);
 
-					length += 12; // fixed info
+					length += PROBE_FIXED_PARAM_LEN; // fixed info
 					free(buffer);
 					buffer = NULL;
 					length += 2 + len; // default essid
 
 					// add channel
-					packet[length] = 0x03;
+					packet[length] = IEEE80211_ELEMID_DSPARMS;
 					packet[length + 1] = 0x01;
 					temp_channel = wi_get_channel(_wi_in); // current channel
 					if (!invalid_channel_displayed)
