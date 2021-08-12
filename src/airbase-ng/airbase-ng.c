@@ -2140,7 +2140,7 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 				skip_probe:
 
 					// transform into probe response
-					packet[0] = 0x50;
+					packet[0] = IEEE80211_FC0_TYPE_MGT | IEEE80211_FC0_SUBTYPE_PROBE_RESP;
 
 					if (opt.verbose)
 					{
@@ -2263,7 +2263,7 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 				if (!lopt.nobroadprobe)
 				{
 					// transform into probe response
-					packet[0] = 0x50;
+					packet[0] = IEEE80211_FC0_TYPE_MGT | IEEE80211_FC0_SUBTYPE_PROBE_RESP;
 
 					if (opt.verbose)
 					{
