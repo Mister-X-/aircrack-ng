@@ -92,6 +92,8 @@
 #define ALLOW_MACS 0
 #define BLOCK_MACS 1
 
+#define PROBE_FIXED_PARAM_LEN 12
+
 #define DEAUTH_REQ                                                             \
 	"\xC0\x00\x3A\x01\xCC\xCC\xCC\xCC\xCC\xCC\xBB\xBB\xBB\xBB\xBB\xBB"         \
 	"\xBB\xBB\xBB\xBB\xBB\xBB\x00\x00\x07\x00"
@@ -2312,7 +2314,6 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 					}
 
 					// insert essid
-					#define PROBE_FIXED_PARAM_LEN 12
 					len = (size_t) getESSID(fessid);
 					if (!len)
 					{
