@@ -942,14 +942,21 @@ static int packet_xmit_external(unsigned char * packet,
 /**
  * @brief Remove specific Information Element(s) (aka tag) from a frame.
  *        Handle when multiple tags with the same number exist.
+ *        Handle checking extra data in the tag value such as OUI or Extended tag ID.
  * @param[in,out] tagged_params Buffer containing IEs, starting at an IE
  * @param[in] exclude_tag_id tag number to remove. See enum containing IEEE80211_ELEMID_ items in ieee80211.h
  * @param[in,out] tp_length Length of the 'flags' buffer. It gets updated if the tag is removed
+ * @param[in] extra_data Used to check for values at the beginning of the value field,
+ * which can be done to match on the OUI for WPA1 tag (00:50:f2), or extended tag ID
+ * for example. Set to NULL if not required.
+ * @param[in] extra_data_len Length of extra_data. Set to 0 if no data, or extra_data is NULL
  * @return 0 on success, 1 on error/failure
  */
-static int remove_tag(uint8_t * tagged_params,
-					  const uint8_t exclude_tag_id,
-					  size_t * tp_length)
+static int remove_tag_extra_data(uint8_t * tagged_params,
+								 const uint8_t exclude_tag_id,
+								 const uint8_t * extra_data,
+								 const size_t extra_data_len,
+								 size_t * tp_length)
 {
 	REQUIRE(tagged_params != NULL);
 	REQUIRE(tp_length != NULL);
@@ -962,6 +969,9 @@ static int remove_tag(uint8_t * tagged_params,
 	if (tagged_params == NULL) return (1);
 
 	if (*tp_length == 0) return (1);
+
+	if (extra_data_len && !extra_data) return (1);
+	if (!extra_data && extra_data) return (1);
 
 	while (src_pos < *tp_length)
 	{
@@ -987,11 +997,19 @@ static int remove_tag(uint8_t * tagged_params,
 		}
 
 		// Compute new positions
-		src_pos += cur_tag_total_len;
-		if (cur_tag_id != exclude_tag_id)
+		// Only update destination position if either:
+		// - The IEs we're looking for isn't matching the current IE
+		// - The IEs are matching, but the extra data we're checking against isn't matching
+		if (cur_tag_id != exclude_tag_id
+			|| (extra_data_len && cur_tag_length < extra_data_len)
+			|| (extra_data_len
+				&& memcmp(
+					   tagged_params + src_pos + 2, extra_data, extra_data_len)
+					   != 0))
 		{
 			dst_pos += cur_tag_total_len;
 		}
+		src_pos += cur_tag_total_len;
 	}
 
 	// In case something goes wrong in the parsing of a tag, move what's
@@ -1008,6 +1026,22 @@ static int remove_tag(uint8_t * tagged_params,
 	*tp_length = dst_pos;
 
 	return (avail_length == 0);
+}
+
+/**
+ * @brief Remove specific Information Element(s) (aka tag) from a frame.
+ *        Handle when multiple tags with the same number exist.
+ * @param[in,out] tagged_params Buffer containing IEs, starting at an IE
+ * @param[in] exclude_tag_id tag number to remove. See enum containing IEEE80211_ELEMID_ items in ieee80211.h
+ * @param[in,out] tp_length Length of the 'flags' buffer. It gets updated if the tag is removed
+ * @return 0 on success, 1 on error/failure
+ */
+static int remove_tag(uint8_t * tagged_params,
+					  const uint8_t exclude_tag_id,
+					  size_t * tp_length)
+{
+	return remove_tag_extra_data(
+		tagged_params, exclude_tag_id, NULL, 0, tp_length);
 }
 
 /**
@@ -2142,7 +2176,8 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 				skip_probe:
 
 					// transform into probe response
-					packet[0] = IEEE80211_FC0_TYPE_MGT | IEEE80211_FC0_SUBTYPE_PROBE_RESP;
+					packet[0] = IEEE80211_FC0_TYPE_MGT
+								| IEEE80211_FC0_SUBTYPE_PROBE_RESP;
 
 					if (opt.verbose)
 					{
@@ -2265,7 +2300,8 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 				if (!lopt.nobroadprobe)
 				{
 					// transform into probe response
-					packet[0] = IEEE80211_FC0_TYPE_MGT | IEEE80211_FC0_SUBTYPE_PROBE_RESP;
+					packet[0] = IEEE80211_FC0_TYPE_MGT
+								| IEEE80211_FC0_SUBTYPE_PROBE_RESP;
 
 					if (opt.verbose)
 					{
@@ -2281,7 +2317,7 @@ packet_recv(uint8_t * packet, size_t length, struct AP_conf * apc, int external)
 					}
 
 					// store the tagged parameters and insert the fixed ones
-					buffer_len = length -z;
+					buffer_len = length - z;
 					buffer = (uint8_t *) malloc(buffer_len);
 					ALLEGE(buffer != NULL);
 					memcpy(buffer, packet + z, buffer_len);
